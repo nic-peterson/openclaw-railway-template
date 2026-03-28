@@ -173,6 +173,9 @@ async function syncAllowedOrigins() {
 let gatewayProc = null;
 let gatewayStarting = null;
 let shuttingDown = false;
+let gatewayRestartCount = 0;
+let gatewayLastStartTime = 0;
+let intentionalRestart = false;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -184,6 +187,10 @@ async function waitForGatewayReady(opts = {}) {
   const endpoints = ["/openclaw", "/", "/health"];
 
   while (Date.now() - start < timeoutMs) {
+    if (!gatewayProc) {
+      log.error("gateway", "process exited during readiness check");
+      return false;
+    }
     for (const endpoint of endpoints) {
       try {
         const res = await fetch(`${GATEWAY_TARGET}${endpoint}`, {
@@ -232,6 +239,7 @@ async function startGateway() {
     "--allow-unconfigured",
   ];
 
+  gatewayLastStartTime = Date.now();
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
     stdio: "inherit",
     env: {
@@ -256,16 +264,23 @@ async function startGateway() {
 
   gatewayProc.on("exit", (code, signal) => {
     log.error("gateway", `exited code=${code} signal=${signal}`);
+    const uptime = Date.now() - gatewayLastStartTime;
     gatewayProc = null;
-    if (!shuttingDown && isConfigured()) {
-      log.info("gateway", "scheduling auto-restart in 2s...");
+    if (!shuttingDown && !intentionalRestart && isConfigured()) {
+      if (uptime > 30_000) {
+        gatewayRestartCount = 0;
+      } else {
+        gatewayRestartCount++;
+      }
+      const delay = Math.min(2000 * Math.pow(2, gatewayRestartCount), 60_000);
+      log.info("gateway", `scheduling auto-restart in ${delay / 1000}s (attempt ${gatewayRestartCount}, uptime ${Math.round(uptime / 1000)}s)...`);
       setTimeout(() => {
         if (!shuttingDown && !gatewayProc && isConfigured()) {
           ensureGatewayRunning().catch((err) => {
             log.error("gateway", `auto-restart failed: ${err.message}`);
           });
         }
-      }, 2000);
+      }, delay);
     }
   });
 }
@@ -299,6 +314,7 @@ function isGatewayReady() {
 
 async function restartGateway() {
   if (gatewayProc) {
+    intentionalRestart = true;
     try {
       gatewayProc.kill("SIGTERM");
     } catch (err) {
@@ -306,7 +322,9 @@ async function restartGateway() {
     }
     await sleep(750);
     gatewayProc = null;
+    intentionalRestart = false;
   }
+  gatewayRestartCount = 0;
   return ensureGatewayRunning();
 }
 
@@ -1026,10 +1044,18 @@ app.post("/setup/api/pairing/approve", requireSetupAuth, async (req, res) => {
 
 app.post("/setup/api/reset", requireSetupAuth, async (_req, res) => {
   try {
+    if (gatewayProc) {
+      intentionalRestart = true;
+      gatewayProc.kill("SIGTERM");
+      await sleep(750);
+      gatewayProc = null;
+      intentionalRestart = false;
+    }
+    await runCmd(OPENCLAW_NODE, clawArgs(["gateway", "stop"]));
     fs.rmSync(configPath(), { force: true });
     res
       .type("text/plain")
-      .send("OK - deleted config file. You can rerun setup now.");
+      .send("OK - stopped gateway and deleted config file. You can rerun setup now.");
   } catch (err) {
     res.status(500).type("text/plain").send(String(err));
   }
