@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/data/state}"
+export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/data/.openclaw}"
 export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-/data/workspace}"
 export HOME="${HOME:-$OPENCLAW_STATE_DIR}"
 SEED_DIR="/app/workspace-seed"
