@@ -4,6 +4,11 @@ set -e
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/data/state}"
 export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-/data/workspace}"
 export HOME="${HOME:-$OPENCLAW_STATE_DIR}"
+SEED_DIR="/app/workspace-seed"
+
+mkdir -p /data
+mkdir -p "$OPENCLAW_STATE_DIR"
+mkdir -p "$OPENCLAW_WORKSPACE_DIR"
 
 chown -R openclaw:openclaw /data
 chmod 700 /data
@@ -15,5 +20,19 @@ fi
 rm -rf /home/linuxbrew/.linuxbrew
 ln -sfn /data/.linuxbrew /home/linuxbrew/.linuxbrew
 
-exec gosu openclaw node src/server.js
+if [ -d "$SEED_DIR" ] && [ -z "$(ls -A "$OPENCLAW_WORKSPACE_DIR" 2>/dev/null || true)" ]; then
+  echo "Workspace is empty. Seeding from $SEED_DIR"
+  cp -a "$SEED_DIR"/. "$OPENCLAW_WORKSPACE_DIR"/
+fi
 
+chown -R openclaw:openclaw "$OPENCLAW_STATE_DIR" "$OPENCLAW_WORKSPACE_DIR"
+
+echo "OPENCLAW_STATE_DIR=$OPENCLAW_STATE_DIR"
+echo "OPENCLAW_WORKSPACE_DIR=$OPENCLAW_WORKSPACE_DIR"
+echo "HOME=$HOME"
+
+exec gosu openclaw env \
+  OPENCLAW_STATE_DIR="$OPENCLAW_STATE_DIR" \
+  OPENCLAW_WORKSPACE_DIR="$OPENCLAW_WORKSPACE_DIR" \
+  HOME="$HOME" \
+  node src/server.js
