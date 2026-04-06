@@ -3,7 +3,6 @@ set -e
 
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-/data/.openclaw}"
 export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-/data/workspace}"
-export HOME="$OPENCLAW_STATE_DIR"
 SEED_DIR="/app/workspace-seed"
 
 mkdir -p /data
@@ -29,10 +28,5 @@ chown -R openclaw:openclaw "$OPENCLAW_STATE_DIR" "$OPENCLAW_WORKSPACE_DIR"
 
 echo "OPENCLAW_STATE_DIR=$OPENCLAW_STATE_DIR"
 echo "OPENCLAW_WORKSPACE_DIR=$OPENCLAW_WORKSPACE_DIR"
-echo "HOME=$HOME"
 
-exec env \
-  OPENCLAW_STATE_DIR="$OPENCLAW_STATE_DIR" \
-  OPENCLAW_WORKSPACE_DIR="$OPENCLAW_WORKSPACE_DIR" \
-  HOME="$HOME" \
-  node src/server.js
+exec gosu openclaw node src/server.js
